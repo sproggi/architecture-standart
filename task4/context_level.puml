@@ -1,0 +1,34 @@
+@startuml context level
+!include ../c4_templates/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Контекстная диаграмма - Интеграция колл-центров
+
+Person(older_client, "Пожилой клиент", "Клиент банка, которому сложно пользоваться цифровыми каналами")
+
+System(internal_cc, "Внутренний Колл-центр", "CRM система банка для консультантов")
+System(external_cc, "Партнерский Колл-центр", "Внешняя система партнера (файловый обмен)")
+
+System_Boundary(bank_boundary, "Банк «Стандарт»") {
+    System(rate_service, "Микросервис Rate Service", "Управление и предоставление ставок по депозитам")
+    System(admin_panel, "Административная панель", "Импорт XLS файлов со ставками")
+    System(sftp_storage, "SFTP Хранилище", "DMZ зона для файлового обмена")
+    SystemDb(cache, "Redis Cache", "Кэш актуальных ставок")
+}
+
+System_Ext(abs, "АБС", "Монолитная система (не участвует напрямую)")
+
+Rel(older_client, internal_cc, "Звонит для консультации", "Телефон")
+Rel(older_client, external_cc, "Звонит для консультации", "Телефон")
+
+Rel(internal_cc, rate_service, "Запрос актуальных ставок", "REST/HTTPS")
+Rel(external_cc, sftp_storage, "Забирает файл со ставками", "SFTP")
+
+Rel(admin_panel, rate_service, "Загружает новые ставки", "UC-05")
+Rel(rate_service, cache, "Читает/Инвалидирует кэш", "Redis Protocol")
+Rel(rate_service, sftp_storage, "Генерирует и кладет файл", "SFTP")
+
+Rel(rate_service, abs, "Асинхронное уведомление", "Kafka (опционально)")
+
+@enduml

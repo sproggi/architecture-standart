@@ -1,0 +1,42 @@
+@startuml containers
+!include ../c4_templates/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Диаграмма контейнеров - Микросервис Rate Service и интеграции
+
+System_Ext(crm_internal, "CRM Кол-центра", "Внутренняя система банка")
+System_Ext(crm_partner, "CRM Партнера", "Внешняя система (файловый обмен)")
+
+System_Boundary(bank, "Банк «Стандарт»") {
+
+    Container(api_gateway, "API Gateway", "Nginx/Kong", "Маршрутизация, rate limiting, SSL termination")
+    
+    Container(rate_api, "REST API", "Java/Spring Boot", "Предоставляет текущие ставки")
+    Container(rate_worker, "Воркер-Экспортер", "Java/Spring Boot", "Генерирует файлы по расписанию или событиям")
+    Container(admin_ui, "Admin UI", "React/Angular", "Интерфейс для импорта XLS")
+    
+    ContainerDb(redis, "Redis", "In-memory Cache", "Кэширует ставки для быстрых ответов")
+    ContainerDb(sql_db, "MS SQL / Oracle", "Реляционная БД", "Хранилище ставок (мастер-источник)")
+    
+    Container(sftp_server, "SFTP Server", "OpenSSH/SFTP", "DMZ зона для партнера")
+    Container(kafka, "Kafka Broker", "Apache Kafka", "Очередь сообщений")
+}
+
+Rel(crm_internal, api_gateway, "GET /api/v1/rates", "HTTPS")
+Rel(api_gateway, rate_api, "Forward request", "HTTP")
+
+Rel(rate_api, redis, "Чтение кэша", "Redis Protocol")
+Rel(rate_api, sql_db, "Чтение при промахе кэша", "JDBC")
+
+Rel(admin_ui, rate_api, "POST /api/v1/rates/import", "HTTPS")
+Rel(rate_api, kafka, "Публикация RateChangedEvent", "Kafka Protocol")
+Rel(kafka, rate_worker, "Подписка на события", "Kafka Protocol")
+
+Rel(rate_worker, sql_db, "Чтение данных для экспорта", "JDBC")
+Rel(rate_worker, redis, "Чтение кэша", "Redis Protocol")
+Rel(rate_worker, sftp_server, "Запись файла (CSV/XLS)", "SFTP")
+
+Rel(crm_partner, sftp_server, "Загрузка файла", "SFTP")
+
+@enduml
