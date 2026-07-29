@@ -1,0 +1,75 @@
+@startuml containers
+!include ../c4_templates/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_TOP_DOWN()
+
+title Диаграмма контейнеров системы открытия депозитов
+
+' Персонажи
+Person(client_web, "Клиент (Веб)", "Пользуется сайтом или интернет-банком")
+
+' Контейнеры в DMZ
+System_Boundary(boundary_front, "Фронтальные системы") {
+    Container(web_app, "Веб-приложение (Сайт)", "React/Vue.js", "Предоставляет интерфейс для новых клиентов")
+    Container(mobile_app, "Мобильное приложение ИБ", "React Native", "Предоставляет интерфейс для существующих клиентов")
+}
+
+' Балансировщик
+Container(lb, "Балансировщик нагрузки", "Nginx/F5", "Распределяет входящий трафик")
+
+' API Gateway
+Container(gateway, "API Gateway", "Spring Cloud Gateway / Kong", "Маршрутизация, аутентификация, лимитирование")
+
+' Микросервисы
+System_Boundary(boundary_micro, "Микросервисы") {
+    Container(core_service, "Сервис Заявок и Депозитов", "Spring Boot / .NET Core", "Обработка заявок, управление депозитами")
+    Container(rate_service, "Сервис Управления Ставками", "Spring Boot / .NET Core", "Управление ставками, импорт XLS")
+    Container(notify_service, "Сервис Нотификаций", "Spring Boot / .NET Core", "Отправка СМС и уведомлений")
+}
+
+' Базы данных и кэш
+ContainerDb(db_ms, "База данных (MS SQL)", "MS SQL Server", "Хранение заявок, ставок, продуктов")
+ContainerDb(db_oracle, "База данных (Oracle)", "Oracle DB", "Интеграция с существующими данными (опционально)")
+ContainerDb(cache, "Распределённый кэш", "Redis", "Кэширование ставок и справочных данных")
+
+' Промежуточный слой
+Container(kafka, "Брокер сообщений", "Kafka", "Асинхронный обмен событиями")
+Container(adapter, "Адаптер протоколов", "Spring Boot / .NET Core", "Преобразование протоколов для АБС")
+
+' Внешние системы
+Container(abs, "АБС (Legacy)", "Oracle / IBM", "Управление клиентами и депозитами")
+Container(cc_system, "Система кол-центра", "Внешняя система", "Управление заявками новых клиентов")
+Container(sms_core, "Ядро СМС-сервиса", "Внешняя система", "Отправка СМС-сообщений")
+Container(admin_ui, "Административная панель", "React/Vue.js", "Управление ставками и мониторинг")
+
+' Связи
+Rel(client_web, lb, "Использует", "HTTPS")
+Rel(lb, web_app, "Маршрутизирует", "HTTP")
+Rel(lb, mobile_app, "Маршрутизирует", "HTTP")
+
+Rel(web_app, gateway, "Отправляет запросы", "HTTPS")
+Rel(mobile_app, gateway, "Отправляет запросы", "HTTPS")
+Rel(admin_ui, gateway, "Управляет ставками", "HTTPS")
+
+Rel(gateway, core_service, "Маршрутизирует", "HTTP")
+Rel(gateway, rate_service, "Маршрутизирует", "HTTP")
+Rel(gateway, notify_service, "Маршрутизирует", "HTTP")
+
+Rel(core_service, db_ms, "Читает/пишет", "JDBC")
+Rel(rate_service, db_ms, "Читает/пишет", "JDBC")
+Rel(core_service, db_oracle, "Читает (опционально)", "JDBC")
+Rel(rate_service, cache, "Читает/пишет", "Redis protocol")
+Rel(core_service, cache, "Читает", "Redis protocol")
+
+Rel(core_service, kafka, "Публикует события", "TCP/Kafka")
+Rel(rate_service, kafka, "Публикует события", "TCP/Kafka")
+Rel(notify_service, kafka, "Подписывается на события", "TCP/Kafka")
+
+Rel(adapter, kafka, "Подписывается на события", "TCP/Kafka")
+Rel(adapter, abs, "Отправляет команды", "SOAP/REST")
+Rel(core_service, cc_system, "Отправляет заявки", "HTTPS/TLS")
+Rel(notify_service, sms_core, "Отправляет запросы", "HTTPS/TLS")
+Rel(core_service, gateway, "Возвращает статусы", "HTTP") ' Обратный поток
+
+@enduml
